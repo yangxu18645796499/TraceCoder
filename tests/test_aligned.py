@@ -91,6 +91,12 @@ class AlignmentTests(unittest.TestCase):
         self.assertEqual(first,second);self.assertEqual(len(transport.requests),1)
         self.assertEqual(transport.requests[0]['max_tokens'],2048)
         with self.assertRaises(RequestFailure):client.call('a',messages+[messages[0]],'session')
+    def test_phase_budgets_and_low_effort(self):
+        client=GoClient(self.directory,repair_max_tokens=8192,reasoning_effort='low')
+        self.assertEqual(client.payload([],'initial')['max_tokens'],2048)
+        self.assertEqual(client.payload([],'generated_tests')['max_tokens'],8192)
+        self.assertEqual(client.payload([],'TC_public_1_repair')['max_tokens'],8192)
+        self.assertEqual(client.payload([])['reasoning_effort'],'low')
     def test_wrong_model_or_truncation_not_source(self):
         for field,value in [('model','wrong'),('finish_reason','length')]:
             def transport(request,deadline):

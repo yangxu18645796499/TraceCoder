@@ -51,10 +51,15 @@ def http_once(request, deadline):
 
 
 class GoClient:
-    def __init__(self, directory, *, transport=http_once, max_tokens=2048, timeout=90):
+    def __init__(self, directory, *, transport=http_once, max_tokens=2048, timeout=90,
+                 repair_max_tokens=None, reasoning_effort=None):
         self.directory = Path(directory)
         self.transport = transport
         self.max_tokens, self.timeout = max_tokens, timeout
+        self.repair_max_tokens = repair_max_tokens or max_tokens
+        if reasoning_effort not in (None,'low','high','max'):
+            raise ValueError('InvalidReasoningEffort')
+        self.reasoning_effort = reasoning_effort
 
     def call(self, call_id, messages, session_id):
         if not isinstance(call_id, str) or not call_id or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-' for c in call_id):
@@ -63,7 +68,7 @@ class GoClient:
         directory.mkdir(parents=True, exist_ok=True)
         if (directory / 'result.json').exists():
             result = json.loads((directory / 'result.json').read_text('utf-8'))
-            if result.get('request_sha256') != sha256(json.dumps(self.payload(messages), sort_keys=True)):
+            if result.get('request_sha256') != sha256(json.dumps(self.payload(messages,call_id), sort_keys=True)):
                 raise RequestFailure('ResumeRequestMismatch')
             if result['status'] != 'ok':
                 raise RequestFailure(result['status'])
@@ -71,7 +76,7 @@ class GoClient:
         secret = os.environ.get('OPENCODE_API', '').strip()
         if not secret:
             raise RequestFailure('OPENCODE_API missing; no attempt made')
-        payload = self.payload(messages)
+        payload = self.payload(messages,call_id)
         fingerprint = sha256(json.dumps(payload, sort_keys=True))
         # Interrupted pending attempts are never replayed automatically.
         persist(directory / 'attempt.json', {'started_utc': utc(), 'request_sha256': fingerprint,
@@ -115,7 +120,10 @@ class GoClient:
             raise RequestFailure(result.get('error_status', result['error_type']))
         return result
 
-    def payload(self, messages):
-        return {'model': MODEL, 'messages': messages, 'temperature': 0,
-                'max_tokens': self.max_tokens, 'stream': False}
+    def payload(self, messages, call_id='initial'):
+        payload = {'model': MODEL, 'messages': messages, 'temperature': 0,
+                   'max_tokens': self.max_tokens if call_id=='initial' else self.repair_max_tokens, 'stream': False}
+        if self.reasoning_effort is not None:
+            payload['reasoning_effort'] = self.reasoning_effort
+        return payload
 

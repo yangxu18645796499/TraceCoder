@@ -1,5 +1,5 @@
 src/aligned_*.py text eol=lf
-tests/test_aligned.py text eol=lf
+tests/*.py text eol=lf
 # Preserve the historical entry's CRLF bytes used in the existing freezes.
 trace_learn_coder.py text eol=crlf
 ALIGNMENT.md text eol=lf

@@ -2,10 +2,10 @@
 from __future__ import annotations
 import datetime
 import json
+import multiprocessing
 import os
 from pathlib import Path
-import queue
-import threading
+import signal
 import time
 import urllib.error
 import urllib.request
@@ -28,26 +28,70 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def http_once(request, deadline):
-    replies = queue.Queue(maxsize=1)
-    def execute():
-        try:
-            with urllib.request.build_opener(NoRedirect()).open(request, timeout=deadline) as response:
-                if response.geturl() != ENDPOINT:
-                    raise RequestFailure('EndpointChanged')
-                replies.put((response.status, response.read(4_000_001), None))
-        except BaseException as error:
-            replies.put((None, None, error))
-    threading.Thread(target=execute, daemon=True).start()
+def _http_worker(request, deadline, sender):
+    """Trusted network worker; JSON IPC only, never a candidate process."""
     try:
-        status, raw, error = replies.get(timeout=deadline)
-    except queue.Empty:
-        raise RequestFailure('RequestDeadlineExceeded; response unknown; never resend') from None
-    if error:
-        raise error
-    if len(raw) > 4_000_000:
-        raise RequestFailure('ResponseSizeExceeded')
-    return status, json.loads(raw)
+        os.setsid()
+        with urllib.request.build_opener(NoRedirect()).open(request, timeout=deadline) as response:
+            if response.geturl() != ENDPOINT:
+                raise RequestFailure('EndpointChanged')
+            raw = response.read(4_000_001)
+            if len(raw) > 4_000_000:
+                raise RequestFailure('ResponseSizeExceeded')
+            body = {'status': response.status, 'body': json.loads(raw)}
+    except BaseException as error:
+        body = {'error_type': type(error).__name__}
+        if isinstance(error, urllib.error.HTTPError):
+            body['http_status'] = error.code
+        if isinstance(error, RequestFailure):
+            body['error_status'] = str(error)
+    try:
+        sender.send_bytes(json.dumps(body).encode())
+    finally:
+        sender.close()
+
+
+def _stop_worker(process):
+    # No pending worker may overlap the next request after a deadline.
+    for action in (signal.SIGTERM, signal.SIGKILL):
+        if not process.is_alive():
+            break
+        try:
+            if os.getpgid(process.pid) == process.pid:
+                os.killpg(process.pid, action)
+            else:
+                os.kill(process.pid, action)
+        except ProcessLookupError:
+            pass
+        process.join(timeout=0.5)
+    process.join(timeout=0)
+    if process.is_alive():
+        raise RequestFailure('HTTPWorkerCleanupFailed; no next request permitted')
+
+
+def http_once(request, deadline):
+    if os.name != 'posix':
+        raise RequestFailure('LinuxHTTPWorkerRequired')
+    started = time.monotonic()
+    receiver, sender = multiprocessing.get_context('fork').Pipe(duplex=False)
+    process = multiprocessing.get_context('fork').Process(target=_http_worker,
+                                                          args=(request, deadline, sender))
+    process.start()
+    sender.close()
+    try:
+        remaining = max(0, deadline - (time.monotonic() - started))
+        if not receiver.poll(remaining):
+            raise RequestFailure('RequestDeadlineExceeded; response unknown; never resend')
+        body = json.loads(receiver.recv_bytes(24_000_000))
+        if 'error_type' in body:
+            error = RequestFailure(body.get('error_status', 'HTTPTransportError:' + body['error_type']))
+            error.transport_error_type = body['error_type']
+            error.http_status = body.get('http_status')
+            raise error
+        return body['status'], body['body']
+    finally:
+        receiver.close()
+        _stop_worker(process)
 
 
 class GoClient:
@@ -110,6 +154,10 @@ class GoClient:
         except BaseException as error:
             # Do not print API exception details or headers; preserve only safe codes.
             result.update(status='api_failed', error_type=type(error).__name__)
+            if getattr(error, 'transport_error_type', None):
+                result['transport_error_type'] = error.transport_error_type
+            if getattr(error, 'http_status', None) is not None:
+                result['http_status'] = error.http_status
             if isinstance(error, RequestFailure):
                 result['error_status'] = str(error).replace(secret, '[REDACTED]')[:500]
             if isinstance(error, urllib.error.HTTPError):

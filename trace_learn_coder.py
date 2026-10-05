@@ -1,4 +1,12 @@
+"""Public-only aligned entry point; legacy execution is not an accepted evaluator."""
 import sys
+
+# Dispatch before importing legacy generation (.env) or unsafe evaluators.
+if __name__ == '__main__':
+    from src.aligned_cli import main as aligned_main
+    aligned_main()
+    raise SystemExit(0)
+
 import time
 from itertools import islice
 from tqdm import tqdm

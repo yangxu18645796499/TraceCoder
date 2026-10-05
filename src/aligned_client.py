@@ -175,3 +175,12 @@ class GoClient:
             payload['reasoning_effort'] = self.reasoning_effort
         return payload
 
+    def for_directory(self, directory):
+        return GoClient(directory, transport=self.transport, max_tokens=self.max_tokens,
+                        timeout=self.timeout, repair_max_tokens=self.repair_max_tokens,
+                        reasoning_effort=self.reasoning_effort)
+
+    def policy(self):
+        return {'version': 'legacy-v2', 'initial_timeout': self.timeout,
+                'other_timeout': self.timeout, 'retries': 0}
+

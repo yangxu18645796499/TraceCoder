@@ -44,6 +44,7 @@ class Pipeline:
                    'limits': self.limits, 'two_step': self.two_step, 'freeze_sha256': self.freeze_sha256,
                    'max_tokens': self.client.max_tokens, 'timeout': self.client.timeout,
                    'repair_max_tokens': self.client.repair_max_tokens, 'reasoning_effort': self.client.reasoning_effort}
+        context['client_policy'] = self.client.policy()
         final_path = path / 'trajectory.json'
         if final_path.exists():
             record = json.loads(final_path.read_text('utf-8'))
@@ -51,9 +52,7 @@ class Pipeline:
                 raise ValueError('TrajectoryResumeContextMismatch')
             return record
         session = sha256(str(self.directory.resolve()) + ':' + problem['generation_group_id'])[:32]
-        calls = GoClient(path / 'calls', transport=self.client.transport,
-                         max_tokens=self.client.max_tokens, timeout=self.client.timeout,
-                         repair_max_tokens=self.client.repair_max_tokens,reasoning_effort=self.client.reasoning_effort)
+        calls = self.client.for_directory(path / 'calls')
         record = {'problem_id': problem['problem_id'], 'dataset': problem['dataset'],
                   'generation_group_id': problem['generation_group_id'], 'prompt_hash': problem['prompt_hash'],
                   'methods': {}, 'hidden_feedback': False, 'session_id': session,

@@ -3,7 +3,7 @@ import argparse
 # --- Dataset Path Configuration ---
 DATASET_PATHS = {
     "humaneval": {
-        "data_path": "./datasets/human_eval/data/test.jsonl", # Please replace with the actual local path
+        "data_path": "./datasets/human_eval/data/HumanEval.jsonl", # 原版 HumanEval 164 题（由 HumanEval.jsonl.gz 解压，对应论文 Humaneval 列）
         "eval_module": "datasets.human_eval.execution" # Python import path for the evaluation module
     },
     "humanevalplus": {

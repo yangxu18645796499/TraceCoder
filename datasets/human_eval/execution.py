@@ -85,6 +85,119 @@ class AssertTransformer(ast.NodeTransformer):
         return [inc_total_stmt, try_node]
 
 
+# Names for counters in exec_globals（子进程内由 AST 转换器读写）
+PASSED_COUNTER = "_eval_passed_count"
+FAILED_COUNTER = "_eval_failed_count"
+TOTAL_EXECUTED_COUNTER = "_eval_total_executed_assertions"
+
+
+def _unsafe_execute_worker(worker_payload: Dict, result_list_proxy):
+    """在独立子进程中执行候选代码与转换后的测试。
+
+    必须是模块级函数：Windows 的 spawn 启动方式要求子进程 target 可 pickle，
+    原实现将其嵌套在 check_correctness 内部，Windows 上会直接崩溃。
+    """
+    task_id = worker_payload["task_id"]
+    defined_total_count = worker_payload["defined_total_count"]
+    timeout = worker_payload["timeout"]
+
+    exec_globals = {
+        PASSED_COUNTER: 0,
+        FAILED_COUNTER: 0,
+        TOTAL_EXECUTED_COUNTER: 0,
+        "__builtins__": __builtins__  # Ensure builtins are available
+    }
+
+    with create_tempdir():
+        import os as _os_module
+        import shutil as _shutil_module
+        _original_os_chdir = _os_module.chdir
+        _original_os_getcwd = _os_module.getcwd
+        _original_os_rmdir = _os_module.rmdir
+        _original_shutil_rmtree = _shutil_module.rmtree
+
+        reliability_guard()
+
+        # Transform the test code to count individual assertions
+        try:
+            test_ast = ast.parse(worker_payload["test"])
+            transformer = AssertTransformer(PASSED_COUNTER, FAILED_COUNTER, TOTAL_EXECUTED_COUNTER)
+            transformed_test_ast = transformer.visit(test_ast)
+            ast.fix_missing_locations(transformed_test_ast)  # Important after transformations
+            # Compile the transformed AST to a code object
+            # The 'filename' argument to compile helps in tracebacks.
+            compiled_transformed_test = compile(transformed_test_ast, filename=f"<transformed_test_{task_id}>",
+                                                mode="exec")
+        except Exception as e:
+            # If transformation fails, we can't run granular tests
+            result_list_proxy.append({
+                "status": f"failed: AST transformation error: {type(e).__name__}: {e}",
+                PASSED_COUNTER: 0,
+                FAILED_COUNTER: defined_total_count,  # All defined tests are failed
+                TOTAL_EXECUTED_COUNTER: 0
+            })
+            # Restore os/shutil functions before exiting context managers
+            _os_module.chdir = _original_os_chdir
+            _os_module.getcwd = _original_os_getcwd
+            _os_module.rmdir = _original_os_rmdir
+            _shutil_module.rmtree = _original_shutil_rmtree
+            return
+
+        # Construct the check program using the compiled transformed test
+        # We exec the prompt and completion first, then the compiled test, then the check call.
+        # This order ensures the `problem['entry_point']` function is defined by `prompt + completion`
+        # before the transformed `check` function (from `compiled_transformed_test`) tries to use it.
+
+        # The check_program will now be executed in stages or carefully combined.
+        # Let's exec them separately into the same exec_globals for clarity
+        program_to_run_entry_point = worker_payload["prompt"] + worker_payload["completion"]
+        check_call_str = f"\ncheck({worker_payload['entry_point']})"  # The call to the (now transformed) check function
+
+        # print(f"Task {task_id} - Executing entry point def:\n{program_to_run_entry_point[:200]}...")
+        # print(f"Task {task_id} - Executing transformed test and check call...")
+
+        try:
+            with swallow_io():
+                with time_limit(timeout):
+                    # Execute the candidate's code (prompt + completion)
+                    exec(program_to_run_entry_point, exec_globals)
+                    # Execute the transformed test definitions
+                    exec(compiled_transformed_test, exec_globals)
+                    # Execute the call to the check function
+                    exec(check_call_str, exec_globals)
+
+            # If exec completes without other exceptions, counts are in exec_globals
+            result_list_proxy.append({
+                "status": "completed_execution",  # Indicates exec ran, individual counts matter
+                PASSED_COUNTER: exec_globals.get(PASSED_COUNTER, 0),
+                FAILED_COUNTER: exec_globals.get(FAILED_COUNTER, 0),
+                TOTAL_EXECUTED_COUNTER: exec_globals.get(TOTAL_EXECUTED_COUNTER, 0)
+            })
+
+        except TimeoutException:
+            result_list_proxy.append({
+                "status": "timed out",
+                PASSED_COUNTER: 0,  # Or could try to get partial counts if they were updated before timeout
+                FAILED_COUNTER: defined_total_count,  # If timed out, all are considered failed
+                TOTAL_EXECUTED_COUNTER: exec_globals.get(TOTAL_EXECUTED_COUNTER, 0)
+                # How many were hit before timeout
+            })
+        except BaseException as e:  # Catch other errors during exec (e.g. SyntaxError in completion, runtime error)
+            err_type = type(e).__name__
+            err_msg = str(e).replace('\n', ' ')
+            result_list_proxy.append({
+                "status": f"failed: {err_type}: {err_msg}",
+                PASSED_COUNTER: 0,  # Or partial counts if available and meaningful
+                FAILED_COUNTER: defined_total_count,
+                TOTAL_EXECUTED_COUNTER: exec_globals.get(TOTAL_EXECUTED_COUNTER, 0)
+            })
+        finally:
+            _os_module.chdir = _original_os_chdir
+            _os_module.getcwd = _original_os_getcwd
+            _os_module.rmdir = _original_os_rmdir
+            _shutil_module.rmtree = _original_shutil_rmtree
+
+
 def check_correctness(problem: Dict, completion: str, timeout: float,
                       completion_id: Optional[int] = None) -> Dict:
     task_id = problem.get("task_id", "Unknown")
@@ -92,113 +205,21 @@ def check_correctness(problem: Dict, completion: str, timeout: float,
     # Static count of assertions defined in the 'check' function
     defined_total_count = _get_total_test_cases(problem["test"], task_id_for_warning=task_id)
 
-    # Names for counters in exec_globals
-    PASSED_COUNTER = "_eval_passed_count"
-    FAILED_COUNTER = "_eval_failed_count"
-    TOTAL_EXECUTED_COUNTER = "_eval_total_executed_assertions"
-
-    # This function will be executed in a separate process.
-    def unsafe_execute(result_list_proxy):
-        exec_globals = {
-            PASSED_COUNTER: 0,
-            FAILED_COUNTER: 0,
-            TOTAL_EXECUTED_COUNTER: 0,
-            "__builtins__": __builtins__  # Ensure builtins are available
-        }
-
-        with create_tempdir():
-            import os as _os_module
-            import shutil as _shutil_module
-            _original_os_chdir = _os_module.chdir
-            _original_os_getcwd = _os_module.getcwd
-            _original_os_rmdir = _os_module.rmdir
-            _original_shutil_rmtree = _shutil_module.rmtree
-
-            reliability_guard()
-
-            # Transform the test code to count individual assertions
-            try:
-                test_ast = ast.parse(problem["test"])
-                transformer = AssertTransformer(PASSED_COUNTER, FAILED_COUNTER, TOTAL_EXECUTED_COUNTER)
-                transformed_test_ast = transformer.visit(test_ast)
-                ast.fix_missing_locations(transformed_test_ast)  # Important after transformations
-                # Compile the transformed AST to a code object
-                # The 'filename' argument to compile helps in tracebacks.
-                compiled_transformed_test = compile(transformed_test_ast, filename=f"<transformed_test_{task_id}>",
-                                                    mode="exec")
-            except Exception as e:
-                # If transformation fails, we can't run granular tests
-                result_list_proxy.append({
-                    "status": f"failed: AST transformation error: {type(e).__name__}: {e}",
-                    PASSED_COUNTER: 0,
-                    FAILED_COUNTER: defined_total_count,  # All defined tests are failed
-                    TOTAL_EXECUTED_COUNTER: 0
-                })
-                # Restore os/shutil functions before exiting context managers
-                _os_module.chdir = _original_os_chdir
-                _os_module.getcwd = _original_os_getcwd
-                _os_module.rmdir = _original_os_rmdir
-                _shutil_module.rmtree = _original_shutil_rmtree
-                return
-
-            # Construct the check program using the compiled transformed test
-            # We exec the prompt and completion first, then the compiled test, then the check call.
-            # This order ensures the `problem['entry_point']` function is defined by `prompt + completion`
-            # before the transformed `check` function (from `compiled_transformed_test`) tries to use it.
-
-            # The check_program will now be executed in stages or carefully combined.
-            # Let's exec them separately into the same exec_globals for clarity
-            program_to_run_entry_point = problem["prompt"] + completion
-            check_call_str = f"\ncheck({problem['entry_point']})"  # The call to the (now transformed) check function
-
-            # print(f"Task {task_id} - Executing entry point def:\n{program_to_run_entry_point[:200]}...")
-            # print(f"Task {task_id} - Executing transformed test and check call...")
-
-            try:
-                with swallow_io():
-                    with time_limit(timeout):
-                        # Execute the candidate's code (prompt + completion)
-                        exec(program_to_run_entry_point, exec_globals)
-                        # Execute the transformed test definitions
-                        exec(compiled_transformed_test, exec_globals)
-                        # Execute the call to the check function
-                        exec(check_call_str, exec_globals)
-
-                # If exec completes without other exceptions, counts are in exec_globals
-                result_list_proxy.append({
-                    "status": "completed_execution",  # Indicates exec ran, individual counts matter
-                    PASSED_COUNTER: exec_globals.get(PASSED_COUNTER, 0),
-                    FAILED_COUNTER: exec_globals.get(FAILED_COUNTER, 0),
-                    TOTAL_EXECUTED_COUNTER: exec_globals.get(TOTAL_EXECUTED_COUNTER, 0)
-                })
-
-            except TimeoutException:
-                result_list_proxy.append({
-                    "status": "timed out",
-                    PASSED_COUNTER: 0,  # Or could try to get partial counts if they were updated before timeout
-                    FAILED_COUNTER: defined_total_count,  # If timed out, all are considered failed
-                    TOTAL_EXECUTED_COUNTER: exec_globals.get(TOTAL_EXECUTED_COUNTER, 0)
-                    # How many were hit before timeout
-                })
-            except BaseException as e:  # Catch other errors during exec (e.g. SyntaxError in completion, runtime error)
-                err_type = type(e).__name__
-                err_msg = str(e).replace('\n', ' ')
-                result_list_proxy.append({
-                    "status": f"failed: {err_type}: {err_msg}",
-                    PASSED_COUNTER: 0,  # Or partial counts if available and meaningful
-                    FAILED_COUNTER: defined_total_count,
-                    TOTAL_EXECUTED_COUNTER: exec_globals.get(TOTAL_EXECUTED_COUNTER, 0)
-                })
-            finally:
-                _os_module.chdir = _original_os_chdir
-                _os_module.getcwd = _original_os_getcwd
-                _os_module.rmdir = _original_os_rmdir
-                _shutil_module.rmtree = _original_shutil_rmtree
-
     manager = multiprocessing.Manager()
     execution_result_details_list = manager.list()
 
-    p = multiprocessing.Process(target=unsafe_execute, args=(execution_result_details_list,))
+    worker_payload = {
+        "task_id": task_id,
+        "prompt": problem["prompt"],
+        "completion": completion,
+        "entry_point": problem["entry_point"],
+        "test": problem["test"],
+        "timeout": timeout,
+        "defined_total_count": defined_total_count,
+    }
+
+    p = multiprocessing.Process(target=_unsafe_execute_worker,
+                                args=(worker_payload, execution_result_details_list))
     p.start()
     p.join(timeout=timeout + 1)
 

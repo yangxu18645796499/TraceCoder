@@ -2,18 +2,21 @@ import time
 import re
 import ast
 from typing import Tuple, Any, List
-import torch
 from openai import OpenAI, APIError, Timeout, RateLimitError
-from transformers import AutoTokenizer
+import os
 import logging # Added import
+from dotenv import load_dotenv
 
 # Import function from a sibling module
 from .postprocessing import extract_python_code
 
 # --- OpenAI/Compatible API Client Configuration ---
+# 从 TraceCoder/.env 读取 OPENAI_API_KEY / OPENAI_BASE_URL，无需改代码
+load_dotenv()
+
 client = OpenAI(
-    api_key="your_api_key_here",
-    base_url="your_base_url_here"
+    api_key=os.getenv("OPENAI_API_KEY", "your_api_key_here"),
+    base_url=os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com/v1")
 )
 
 # Configure logger
@@ -126,6 +129,7 @@ def generator(text: str, status: str, model_name: str, models=None, tokenizers=N
     """
     # If local models and tokenizers are provided
     if models and tokenizers:
+        import torch  # 仅本地模型分支需要，按需导入避免 API 模式强制装 torch
         # Local model generation logic is preserved here
         messages = [{"role": "user", "content": text}]
         inputs = tokenizers.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt").to(

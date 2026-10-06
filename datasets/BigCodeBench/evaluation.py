@@ -11,7 +11,10 @@ import time
 import types
 import unittest
 import sys
-import resource # Ensure resource is imported for reliability_guard
+try:
+    import resource # Ensure resource is imported for reliability_guard
+except ImportError:  # Windows 无 resource 模块，置 None 使 reliability_guard 的守卫生效
+    resource = None
 import traceback # Import traceback for detailed error reporting
 
 # --- Assumed Helper Preamble (from problem description context) ---
@@ -209,7 +212,7 @@ def reliability_guard(max_as_limit_mb, max_data_limit_mb, max_stack_limit_mb):
             pass
 
     # Set resource limits (if possible)
-    if hasattr(resource, "setrlimit"):
+    if resource is not None and hasattr(resource, "setrlimit"):
         # Convert MB to bytes
         # Note: Original code had a factor of 10, keeping it for consistency, but usually it's just 1024*1024
         factor = 1024 * 1024 * 10

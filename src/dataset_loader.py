@@ -15,7 +15,9 @@ def load_dataset(dataset_name: str, dataset_path: str):
     elif dataset_name == 'humaneval':
         # HumanEval is typically a jsonl file
         return load_jsonl_dataset(dataset_path)
-    # More dataset loading logic can be added here
+    elif dataset_name in ('humanevalplus', 'classeval'):
+        # 其余数据集的本地文件均为 parquet 格式（原实现缺失这两个分支，会直接抛 Unsupported）
+        return load_parquet_dataset(dataset_path)
     else:
         raise ValueError(f"Unsupported dataset name: {dataset_name}")
 

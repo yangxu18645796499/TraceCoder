@@ -75,4 +75,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit("本轮只允许公开入口：从WSL运行self-debug/scripts/he_pipeline.py。原数据入口未隔离隐藏测试，禁止误跑。")

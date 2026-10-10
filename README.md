@@ -1,6 +1,16 @@
 
 # TraceCoder: A Trace-Driven Multi-Agent Framework for Automated Debugging of LLM-Generated Code
 
+## 本轮公开／隐藏对齐入口（2026-10-11）
+
+本分支`codex/original-tracecoder-he-v32`从官方原提交`cbd536e`开始，旧实验保存于`codex/archive-aligned-experiments-20261011`，未经用户认可不合并main。
+
+本轮入口是`public_humaneval.process_public_problem`，由self-debug的`scripts/he_pipeline.py`在WSL隔离进程中驱动。原`problem_processor.py`、各智能体提示、提取逻辑、5次迭代与连续2次无进步停止不变；仅替换公开数据和执行I/O，并在方法进程退出后独立评分。
+
+当前只能免费mock验收，未连接任何付费API。拟用ChatAnywhere / deepseek-v3.2 / thinking关闭 / 1024tokens，供应商参数还未实测。不要使用下方旧教程的原始数据入口开展本轮对齐实验，它未实现新的公开／隐藏分离；旧入口已加退出提示避免误跑。
+
+完整数据报告与验收见`D:\大三上课程\self-debug\docs\he_restart`。下方内容保留官方原README，不代表本轮参数或成绩。
+
 **TraceCoder** is a Python framework designed for conducting experiments in code generation and automated code repair. It enables the evaluation and enhancement of code generation and debugging techniques using various language models and datasets.
 
 ## Key Features

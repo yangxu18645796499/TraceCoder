@@ -2,19 +2,19 @@ import time
 import re
 import ast
 from typing import Tuple, Any, List
-import torch
-from openai import OpenAI, APIError, Timeout, RateLimitError
-from transformers import AutoTokenizer
 import logging # Added import
 
 # Import function from a sibling module
 from .postprocessing import extract_python_code
 
 # --- OpenAI/Compatible API Client Configuration ---
-client = OpenAI(
-    api_key="your_api_key_here",
-    base_url="your_base_url_here"
-)
+# The public-only adapter supplies the transport. No credential is loaded by
+# this module, and API mode no longer requires torch/transformers.
+_transport = None
+
+def configure_transport(transport):
+    global _transport
+    _transport = transport
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -88,34 +88,11 @@ def extract_python_code_with_logic(text: str, remove_main: bool = True, remove_p
 
 # --- API Call Function ---
 def call_api(prompt, model, max_tokens_response=4096):
-    try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system",
-                 "content": "You are a helpful assistant specialized in code generation and debugging."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.2,
-        )
-        result_text = response.choices[0].message.content
-        prompt_tokens = response.usage.prompt_tokens if response.usage else 0
-        completion_tokens = response.usage.completion_tokens if response.usage else 0
-        time.sleep(1) # Wait for 1 second after each successful call
-        return result_text, prompt_tokens, completion_tokens
-    except RateLimitError as e:
-        logger.warning(f"API rate limit error: {e}. May need to wait longer before retrying.") # logger is now defined
-        # A longer wait time or a specific retry strategy can be added here
-        return None, 0, 0
-    except APIError as e:
-        logger.error(f"An error occurred during the API call: {e}") # logger is now defined
-        return None, 0, 0
-    except Timeout as e:
-        logger.error(f"API call timed out: {e}") # logger is now defined
-        return None, 0, 0
-    except Exception as e: # Catch all other unexpected exceptions
-        logger.error(f"An unknown error occurred when calling the API: {e}") # logger is now defined
-        return None, 0, 0
+    if _transport is None:
+        raise RuntimeError("Use the public-only HumanEval adapter; no default API transport")
+    # Transport exceptions propagate: a failed/unknown response must not trigger
+    # the upstream retry loop. The adapter records raw usage and finish_reason.
+    return _transport(prompt, model, max_tokens=1024, temperature=0.2)
 
 
 # --- Main Generator Function ---
@@ -126,6 +103,7 @@ def generator(text: str, status: str, model_name: str, models=None, tokenizers=N
     """
     # If local models and tokenizers are provided
     if models and tokenizers:
+        import torch
         # Local model generation logic is preserved here
         messages = [{"role": "user", "content": text}]
         inputs = tokenizers.apply_chat_template(messages, add_generation_prompt=True, return_tensors="pt").to(

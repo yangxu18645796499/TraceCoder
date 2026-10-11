@@ -1,15 +1,40 @@
+# TraceCoder：原版框架＋本轮公开／隐藏最小改造
 
-# TraceCoder: A Trace-Driven Multi-Agent Framework for Automated Debugging of LLM-Generated Code
+本main以官方提交`cbd536eb5a02b53ee835cae2f07f5b7ed8bb694d`为基础，保留本次HumanEval／HumanEval+实验已经验证的最小适配。不使用旧`aligned_*.py`流程或八条件实验。
 
-## 本轮公开／隐藏对齐入口（2026-10-11）
+旧工作在`codex/archive-aligned-experiments-20261011`和仓库外备份；本轮原分支`codex/original-tracecoder-he-v32`保留。此仓库仍独立位于`D:\研究项目\竞品代码\TraceCoder`，不是self-debug里另写一套调试方法。
 
-本分支`codex/original-tracecoder-he-v32`从官方原提交`cbd536e`开始，旧实验保存于`codex/archive-aligned-experiments-20261011`，未经用户认可不合并main。
+## 原版到当前：保留与修改清单
 
-本轮入口是`public_humaneval.process_public_problem`，由self-debug的`scripts/he_pipeline.py`在WSL隔离进程中驱动。原`problem_processor.py`、各智能体提示、提取逻辑、5次迭代与连续2次无进步停止不变；仅替换公开数据和执行I/O，并在方法进程退出后独立评分。
+| 部分 | 当前处理 |
+| --- | --- |
+| problem_processor.py、config.py、reporting.py | 与原官方核心保持一致；保留提示、阶段衔接、5次修复、2次无改善、历史和回退 |
+| src/postprocessing.py、src/traceRunner.py | 保留原提取和轨迹核心；正式运行将执行I/O接到公开隔离执行器，不在宿主不安全执行 |
+| src/generation.py | 保留原提取辅助函数与生成分支；API通过注入transport调用，模型工作者不持有凭证，异常不自动重试 |
+| public_humaneval.py | 本轮必要适配：只允许5个公开字段，接公开检查和公开轨迹；没有隐藏评分读入接口 |
+| trace_learn_coder.py | 保留原代码，但直接运行被明确阻止，避免旧数据入口向模型暴露隐藏测试 |
+| datasets与原加载／评测代码 | 保留原版来源，不作为本轮生成数据入口 |
+| 旧aligned代码、专用测试／配置、旧结果和缓存 | 不在main工作目录；已归档，不重新引入 |
 
-当前只能免费mock验收，未连接任何付费API。拟用ChatAnywhere / deepseek-v3.2 / thinking关闭 / 1024tokens，供应商参数还未实测。不要使用下方旧教程的原始数据入口开展本轮对齐实验，它未实现新的公开／隐藏分离；旧入口已加退出提示避免误跑。
+只有依赖传输和安全I/O改变，不恢复“必须完整初始源码”的额外解析门槛，也不改变原智能体提示及调试算法。隐藏评测在self-debug中由独立可信进程进行。
 
-完整数据报告与验收见`D:\大三上课程\self-debug\docs\he_restart`。下方内容保留官方原README，不代表本轮参数或成绩。
+## 本轮已完成
+
+固定ChatAnywhere `deepseek-v3.2`、1024输出tokens、thinking关闭、temperature=0.2、串行。164题共享初始代码：
+
+- HumanEval：E0 157/164，TraceCoder 161/164，改对4、改错0。
+- fixed-snapshot HumanEval+：146/164，151/164，改对5、改错0。
+- 正式已知172,167 tokens，未估算金额；模型进程已经结束，不自动运行。
+
+实际运行入口在self-debug的`scripts/he/he_campaign.py`，免费检查为`scripts/he/he_pipeline.py`及对应tests/he。源码与原实验快照、双评分、数据补齐和完整报告见`D:\大三上课程\self-debug\docs\he_restart`。
+
+免费原版边界检查：
+
+```bash
+python -m unittest discover -s tests/he -p 'test_*.py' -v
+```
+
+不读取API凭证、不调用模型。下面保留官方原说明，仅供原项目背景参考，不代表本轮安全数据入口；不能据旧教程绕过公开／隐藏隔离。
 
 **TraceCoder** is a Python framework designed for conducting experiments in code generation and automated code repair. It enables the evaluation and enhancement of code generation and debugging techniques using various language models and datasets.
 

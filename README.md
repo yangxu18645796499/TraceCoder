@@ -19,15 +19,15 @@
 
 只有依赖传输和安全I/O改变，不恢复“必须完整初始源码”的额外解析门槛，也不改变原智能体提示及调试算法。隐藏评测在self-debug中由独立可信进程进行。
 
-## 本轮已完成
+## 本轮V4.1-Flash重新实验
 
-固定ChatAnywhere `deepseek-v3.2`、1024输出tokens、thinking关闭、temperature=0.2、串行。164题共享初始代码：
+使用官方`deepseek-flash`（当前官方对应V4.1-Flash-1017），1024输出tokens、thinking关闭、temperature=0.2、串行、180秒、重试0次。HE／HE+、MBPP两视图、LCB及ClassEval均重新生成，不复用旧模型代码或成绩。
 
-- HumanEval：E0 157/164，TraceCoder 161/164，改对4、改错0。
-- fixed-snapshot HumanEval+：146/164，151/164，改对5、改错0。
-- 正式已知172,167 tokens，未估算金额；模型进程已经结束，不自动运行。
+`public_humaneval.py`与`public_benchmarks.py`仅更新传递给原处理器的模型标识；原提示、插桩、分析、修复、停止和回退保持不变。LCB stdin保留先前明确批准的脚本提取适配。
 
-实际运行入口在self-debug的`scripts/he/he_campaign.py`，免费检查为`scripts/he/he_pipeline.py`及对应tests/he。源码与原实验快照、双评分、数据补齐和完整报告见`D:\大三上课程\self-debug\docs\he_restart`。
+本轮入口在self-debug的`scripts/mbpp/Invoke-Benchmark.ps1`；结果统一见`D:\大三上课程\self-debug\docs\实验结果汇总.md`。隐藏评分仍在self-debug的无凭证独立进程完成。
+
+旧main和旧V3.2工作保留在`codex/archive-main-before-v41-20261021`和`codex/archive-v32-before-v41-20261021`；旧成绩退出当前文档。禁止依据旧教程直接运行不安全的原始数据入口。
 
 免费原版边界检查：
 

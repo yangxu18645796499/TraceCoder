@@ -51,7 +51,7 @@ class OriginalBoundaryTests(unittest.TestCase):
             problem,task,args,selected_checker=calls[0]
             self.assertEqual(problem,public)
             self.assertEqual((args.max_debug_attempts,args.max_no_improvement_streak),(5,2))
-            self.assertEqual(args.model,'deepseek-v3.2')
+            self.assertEqual(args.model,'deepseek-flash')
             self.assertIs(selected_checker,checker)
         finally:configure_transport(None)
 

@@ -26,7 +26,7 @@ def process_public_benchmark(problem, transport, public_checker, public_trace,
     if stdin and dataset != 'livecodebench_450': raise ValueError('Stdin adapter is LCB-only')
     configure_transport(transport)
     import problem_processor
-    args = SimpleNamespace(model='deepseek-v3.2',dataset=dataset,timeout=10,
+    args = SimpleNamespace(model='deepseek-flash',dataset=dataset,timeout=10,
         max_debug_attempts=5,max_no_improvement_streak=2,
         no_instrumentation=False,no_two_step_repair=False)
     with patch.object(problem_processor,'execute_code_and_capture_prints_last',public_trace):

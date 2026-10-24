@@ -1,5 +1,15 @@
 # TraceCoder：原版框架＋本轮公开／隐藏最小改造
 
+## 仓库分工与完整结果
+
+本仓库只保存TraceCoder方法及其公开数据适配，不重复放置题库和实验结果：
+
+- [self-debug主项目](https://github.com/yangxu18645796499/self-debug)：数据、Linux隔离执行、独立隐藏评分、冻结证据及全部实验记录。
+- [E0／INTERVENOR／TraceCoder统一报告](https://github.com/yangxu18645796499/self-debug/blob/main/docs/实验结果汇总.md)。
+- [INTERVENOR对比仓库](https://github.com/yangxu18645796499/INTERVENOR)：保留原教师／学生修复链，不借用TraceCoder的轨迹方法。
+
+本轮实际TraceCoder方法源码提交为`9be9861`；本次发布说明不改写既有冻结、候选代码或成绩。模型调用与实验均已结束，克隆仓库不会自动发起API请求。
+
 本main以官方提交`cbd536eb5a02b53ee835cae2f07f5b7ed8bb694d`为基础，保留本次HumanEval／HumanEval+实验已经验证的最小适配。不使用旧`aligned_*.py`流程或八条件实验。
 
 旧工作在`codex/archive-aligned-experiments-20261011`和仓库外备份；本轮原分支`codex/original-tracecoder-he-v32`保留。此仓库仍独立位于`D:\研究项目\竞品代码\TraceCoder`，不是self-debug里另写一套调试方法。
@@ -25,7 +35,7 @@
 
 `public_humaneval.py`与`public_benchmarks.py`仅更新传递给原处理器的模型标识；原提示、插桩、分析、修复、停止和回退保持不变。LCB stdin保留先前明确批准的脚本提取适配。
 
-本轮入口在self-debug的`scripts/mbpp/Invoke-Benchmark.ps1`；结果统一见`D:\大三上课程\self-debug\docs\实验结果汇总.md`。隐藏评分仍在self-debug的无凭证独立进程完成。
+本轮已经完成，旧E0／TraceCoder生成启动器已禁用，不能把`scripts/mbpp/Invoke-Benchmark.ps1`当成新的开跑命令。结果和当前使用说明统一见self-debug的README及`docs/实验结果汇总.md`。隐藏评分在self-debug的无凭证独立进程完成；不要直接重启已完成批次。
 
 旧main和旧V3.2工作保留在`codex/archive-main-before-v41-20261021`和`codex/archive-v32-before-v41-20261021`；旧成绩退出当前文档。禁止依据旧教程直接运行不安全的原始数据入口。
 

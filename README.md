@@ -5,7 +5,7 @@
 本仓库只保存TraceCoder方法及其公开数据适配，不重复放置题库和实验结果：
 
 - [self-debug主项目](https://github.com/yangxu18645796499/self-debug)：数据、Linux隔离执行、独立隐藏评分、冻结证据及全部实验记录。
-- [E0／INTERVENOR／TraceCoder统一报告](https://github.com/yangxu18645796499/self-debug/blob/main/docs/实验结果汇总.md)。
+- [E0／SELF-DEBUG／INTERVENOR／TraceCoder统一报告](https://github.com/yangxu18645796499/self-debug/blob/main/docs/实验结果汇总.md)。
 - [INTERVENOR对比仓库](https://github.com/yangxu18645796499/INTERVENOR)：保留原教师／学生修复链，不借用TraceCoder的轨迹方法。
 
 本轮实际TraceCoder方法源码提交为`9be9861`；本次发布说明不改写既有冻结、候选代码或成绩。模型调用与实验均已结束，克隆仓库不会自动发起API请求。
@@ -225,3 +225,7 @@ April 12–18, 2026, Rio de Janeiro, Brazil. ACM, New York, NY, USA, 13 pages.
   publisher    = {ACM},
   pages        = {1--13}
 }
+
+## 2026-10-27整理说明
+
+本仓库只保留原方法及公开输入适配，完整数据和四方法成绩统一放在self-debug。新增SELF-DEBUG方法独立位于https://github.com/yangxu18645796499/SelfDebug_prompts_in_TraceCoder ，没有改写本方法。此次只更新说明、移除IDE配置，不修改实际算法、prompt或已完成实验结果。旧文件树保存在本地`codex/archive-before-main-review-20261027`分支。当前整理分支等待用户确认后再合并main和推送。

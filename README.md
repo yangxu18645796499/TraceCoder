@@ -228,4 +228,4 @@ April 12–18, 2026, Rio de Janeiro, Brazil. ACM, New York, NY, USA, 13 pages.
 
 ## 2026-10-27整理说明
 
-本仓库只保留原方法及公开输入适配，完整数据和四方法成绩统一放在self-debug。新增SELF-DEBUG方法独立位于https://github.com/yangxu18645796499/SelfDebug_prompts_in_TraceCoder ，没有改写本方法。此次只更新说明、移除IDE配置，不修改实际算法、prompt或已完成实验结果。旧文件树保存在本地`codex/archive-before-main-review-20261027`分支。当前整理分支等待用户确认后再合并main和推送。
+本仓库只保留原方法及公开输入适配，完整数据和四方法成绩统一放在self-debug。新增SELF-DEBUG方法独立位于https://github.com/yangxu18645796499/SelfDebug_prompts_in_TraceCoder ，没有改写本方法。此次只更新说明、移除IDE配置，不修改实际算法、prompt或已完成实验结果。旧文件树保存在本地`codex/archive-before-main-review-20261027`分支。本整理版本已获用户确认，用于main正式发布；归档分支不批量上传。

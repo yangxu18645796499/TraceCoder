@@ -11,10 +11,14 @@ from .postprocessing import extract_python_code
 # The public-only adapter supplies the transport. No credential is loaded by
 # this module, and API mode no longer requires torch/transformers.
 _transport = None
+_max_output_tokens = 1024
 
-def configure_transport(transport):
-    global _transport
+def configure_transport(transport, max_tokens=1024):
+    global _transport, _max_output_tokens
+    if max_tokens not in (1024, 8192):
+        raise ValueError('Unapproved output profile')
     _transport = transport
+    _max_output_tokens = max_tokens
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -92,7 +96,7 @@ def call_api(prompt, model, max_tokens_response=4096):
         raise RuntimeError("Use the public-only HumanEval adapter; no default API transport")
     # Transport exceptions propagate: a failed/unknown response must not trigger
     # the upstream retry loop. The adapter records raw usage and finish_reason.
-    return _transport(prompt, model, max_tokens=1024, temperature=0.2)
+    return _transport(prompt, model, max_tokens=_max_output_tokens, temperature=0.2)
 
 
 # --- Main Generator Function ---

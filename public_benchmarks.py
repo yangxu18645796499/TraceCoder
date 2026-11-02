@@ -20,16 +20,27 @@ def extract_stdin_code(text):
 
 
 def process_public_benchmark(problem, transport, public_checker, public_trace,
-                             *, dataset, stdin=False):
+                             *, dataset, stdin=False, max_tokens=1024):
     if set(problem) != PUBLIC_FIELDS or dataset not in DATASETS:
         raise ValueError('Only the five public fields and approved dataset are permitted')
     if stdin and dataset != 'livecodebench_450': raise ValueError('Stdin adapter is LCB-only')
-    configure_transport(transport)
+    if max_tokens == 8192 and dataset != 'classeval':
+        raise ValueError('8192 profile is ClassEval-only')
+    configure_transport(transport, max_tokens=max_tokens)
     import problem_processor
     args = SimpleNamespace(model='deepseek-flash',dataset=dataset,timeout=10,
         max_debug_attempts=5,max_no_improvement_streak=2,
         no_instrumentation=False,no_two_step_repair=False)
     with patch.object(problem_processor,'execute_code_and_capture_prints_last',public_trace):
+        if dataset == 'classeval' and max_tokens == 8192:
+            # Identical public-data extraction policy shared with all new class
+            # methods. It selects a class block; it never repairs source.
+            from src.class_extraction import extract_class_code
+            from src.postprocessing import extract_python_code
+            def extract(text):
+                return extract_class_code(text, problem['entry_point'], extract_python_code)
+            with patch('src.generation.extract_python_code', extract):
+                return problem_processor.process_problem(problem,problem['task_id'],args,public_checker)
         if stdin:
             with patch('src.generation.extract_python_code',extract_stdin_code):
                 return problem_processor.process_problem(problem,problem['task_id'],args,public_checker)

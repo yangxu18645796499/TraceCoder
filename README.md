@@ -1,5 +1,7 @@
 # TraceCoder：原版框架＋本轮公开／隐藏最小改造
 
+七方法实验的ClassEval适配和实际结果入口见[ClassEval说明](CLASS_AUDIT.md)。本页后续内容记录此前完成的1024-token基线。
+
 ## 仓库分工与完整结果
 
 本仓库只保存TraceCoder方法及其公开数据适配，不重复放置题库和实验结果：
